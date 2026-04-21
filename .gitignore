@@ -1,0 +1,28 @@
+# R
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+*.rds
+
+# Data (per README: stored separately on Drive, not committed)
+data/
+outputs/
+results/
+figures/
+
+# Bibliography PDFs (per README: stored in ~/MIH/bibliography/ or Drive)
+bibliography/
+*.pdf
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs and temp
+*.log
+*.tmp
