@@ -6,7 +6,8 @@ data acquisition, Drive sync, what-to-do-next. Updated after every working sessi
 **Last updated:** April 21, 2026
 
 **Sister docs:** `PIPELINE_SPEC.md` (stable design), `PROVENANCE.md` (lineage
-and email archaeology), `MIH_bibliography.md` (citations).
+and email archaeology), `MIH_bibliography.md` (citations), `DATA_SOURCES.md`
+(Drive folder registry), `SESSION_HANDOFF.md` (last-session log).
 
 ---
 
@@ -33,4 +34,15 @@ See the full living doc for current state. Key blockers:
 1. Acquire WorldClim v1.4 and v2.1 (scriptable).
 2. Write and run `01_env_layers.R` (main).
 3. Resolve open decisions before proceeding to Steps 04–05.
+
+## Repo / environment (added 2026-04-21)
+
+- Code and docs now mirrored to the `MosquiTrap-Analysis` GitHub repo on
+  branch `claude/explore-repo-contents-F0td7`.
+- Two canonical Drive folders registered in `DATA_SOURCES.md` (contents
+  still to be described).
+- Anthropic's managed Claude Code web sandbox **cannot reach
+  `drive.google.com`** and **cannot install CRAN packages**. Pipeline work
+  must happen locally. See `SESSION_HANDOFF.md` for full environment probe
+  results and next-session checklist.
 
