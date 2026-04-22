@@ -2,7 +2,9 @@
 ##
 ## Single source of truth for the MIH pipeline's shared infrastructure:
 ##   - DRIVE_ROOT, DRIVE_AUTH constants
-##   - resolve()     : three-tier file resolution (local → Drive → fetch_fn)
+##   - GH_REPO, GH_RELEASES_BASE constants
+##   - resolve()     : four-tier file resolution
+##                     (local → Drive → GitHub Release → fetch_fn)
 ##   - push_output() : gated Drive upload with update-if-exists logic
 ##
 ## Sourced from every pipeline script and utility. Do not copy this file's
@@ -32,8 +34,19 @@
 DRIVE_ROOT <- "MIH_Mosquitoes_Hawaii"
 DRIVE_AUTH <- "jwin74@gmail.com"
 
-resolve <- function(local_path, drive_path = NULL, fetch_fn = NULL,
-                    validate = NULL) {
+## GitHub Release tier: canonical public mirror for large data files we'd
+## otherwise keep on Drive. Public Release assets (up to 2 GB each) are
+## reachable without auth, cacheable, and version-pinned by release tag.
+## Tag convention: data releases use the `data-vN.N` namespace so code/manuscript
+## tags stay separate.
+GH_REPO          <- "jwinchester/mosquitrap-analysis"
+GH_RELEASES_BASE <- sprintf("https://github.com/%s/releases/download", GH_REPO)
+
+resolve <- function(local_path,
+                    drive_path = NULL,
+                    gh_release = NULL,
+                    fetch_fn   = NULL,
+                    validate   = NULL) {
   verbose <- isTRUE(getOption("mih.resolve.verbose", default = TRUE))
   
   ## Resolve local_path against the project root. `here::here()` walks up
@@ -47,9 +60,9 @@ resolve <- function(local_path, drive_path = NULL, fetch_fn = NULL,
   local_path <- here::here(local_path)
   
   ## Tier 1: local. If validate() is supplied, a local hit that fails
-  ## validation is treated as absent and resolution falls through to
-  ## tier 2, then tier 3. This handles interrupted downloads and
-  ## corrupted caches without requiring manual cleanup.
+  ## validation is treated as absent and resolution falls through the
+  ## remaining tiers. This handles interrupted downloads and corrupted
+  ## caches without requiring manual cleanup.
   valid_local <- function(path) {
     if (!file.exists(path)) return(FALSE)
     if (is.null(validate))  return(TRUE)
@@ -69,7 +82,24 @@ resolve <- function(local_path, drive_path = NULL, fetch_fn = NULL,
       ## Drive hit failed validation — fall through to tier 3.
     }
   }
-  
+
+  ## Tier 3: GitHub Release asset. `gh_release` is a relative path in the
+  ## form "<tag>/<asset-filename>", e.g. "data-v0.1/01_DEM_canonical.tif".
+  ## A release miss or a validation failure falls through to tier 4.
+  if (!is.null(gh_release)) {
+    url <- file.path(GH_RELEASES_BASE, gh_release)
+    dir.create(dirname(local_path), recursive = TRUE, showWarnings = FALSE)
+    ok <- tryCatch({
+      utils::download.file(url, local_path, mode = "wb",
+                           method = "libcurl", quiet = !verbose)
+      TRUE
+    }, error = function(e) FALSE)
+    if (ok && valid_local(local_path)) {
+      if (verbose) message("  <- GH release: ", gh_release)
+      return(local_path)
+    }
+  }
+
   if (!is.null(fetch_fn)) {
     dir.create(dirname(local_path), recursive = TRUE, showWarnings = FALSE)
     fetch_fn(local_path)
@@ -78,11 +108,12 @@ resolve <- function(local_path, drive_path = NULL, fetch_fn = NULL,
     stop("Cannot resolve: ", local_path,
          "\n  Fetched file failed validation.")
   }
-  
+
   stop("Cannot resolve: ", local_path,
-       "\n  Not found (or invalid) locally or on Drive.",
+       "\n  Not found (or invalid) locally, on Drive, or in GH releases.",
        if (!is.null(drive_path)) paste0("\n  Drive path tried: ", drive_path),
-       "\n  Run the upstream step first, or check Drive sync.")
+       if (!is.null(gh_release)) paste0("\n  GH release tried: ", gh_release),
+       "\n  Run the upstream step first, or check the remote mirrors.")
 }
 
 push_output <- function(local_path, drive_rel_path) {

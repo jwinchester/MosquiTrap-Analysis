@@ -29,15 +29,18 @@ evaluated against how well they illuminate or test this argument.
 
 ## Design conventions
 
-### Three-tier file resolution
+### Four-tier file resolution
 
-Every script uses a `resolve()` function that tries three tiers in order:
+Every script uses a `resolve()` function that tries four tiers in order:
 
 1. **Local:** file exists at expected path and passes optional validation → use it
 2. **Drive:** not local (or local failed validation) → download from Google Drive
-3. **Public source:** not on Drive → re-fetch from original URL (only valid for
-   `data/public/` files, never field data or outputs)
-4. **Fail loudly:** none of the above → `stop()` with a clear message naming the
+3. **GitHub Release:** not on Drive → download from a pinned Release asset on
+   `jwinchester/mosquitrap-analysis`. Public, cacheable, version-pinned by tag,
+   reachable from sandboxed environments that cannot hit Drive.
+4. **Public source:** not in a release → re-fetch from original URL via
+   `fetch_fn` (only valid for `data/public/` files, never field data or outputs)
+5. **Fail loudly:** none of the above → `stop()` with a clear message naming the
    missing file and which upstream step should have produced it
 
 `local_path` is interpreted as **relative to the project root** (the directory
@@ -47,17 +50,27 @@ sites work identically whether the script is invoked via RStudio's MIH.Rproj,
 `Rscript` from any directory, or sourced from the R console. Absolute paths
 pass through unchanged.
 
-`fetch_fn` is optional. Some `data/public/` sources cannot be scripted — HCDP
-portal orders, Copernicus CDS orders, and anything else acquired through an
-interactive session are examples. For those, the `resolve()` call omits
-`fetch_fn` and the function falls through directly from tier 2 to tier 4 (loud
-stop) if the file is missing. Do not fabricate a `fetch_fn` that can't actually
-re-fetch; a clean failure is better than a broken recipe.
+`drive_path`, `gh_release`, and `fetch_fn` are all optional. Any tier that's
+`NULL` is skipped cleanly — resolution just falls through to the next tier.
+A script that publishes its inputs as Release assets can omit `drive_path`
+entirely; a script whose data only lives on Drive can omit `gh_release`.
+
+`gh_release` is a `<tag>/<asset-filename>` string, e.g.
+`"data-v0.1/01_DEM_hawaii_statewide_canonical.tif"`. Data releases use the
+`data-vN.N` tag namespace so they stay separate from code/manuscript tags.
+Assets up to 2 GB each are fine; public Release assets require no auth.
+
+`fetch_fn` remains the last-ditch option. Some `data/public/` sources cannot
+be scripted — HCDP portal orders, Copernicus CDS orders, and anything else
+acquired through an interactive session. For those, the `resolve()` call omits
+`fetch_fn` and the function falls through directly to the loud stop. Do not
+fabricate a `fetch_fn` that can't actually re-fetch; a clean failure is better
+than a broken recipe.
 
 `validate` is also optional. It's a predicate `function(path) -> logical`
-that `resolve()` calls on any local or Drive hit. Returning `TRUE` accepts the
-file; returning `FALSE` (or throwing) treats the hit as absent and falls
-through to the next tier.
+that `resolve()` calls on any local, Drive, or Release hit. Returning `TRUE`
+accepts the file; returning `FALSE` (or throwing) treats the hit as absent and
+falls through to the next tier.
 
 ### Root resolution — use `here`, never `setwd()`
 
@@ -119,3 +132,21 @@ No hardcoded usernames. No `ROOT <- "."`.
 Drive mirrors local path-for-path under `MIH_Mosquitoes_Hawaii/`. Forward-slash
 paths throughout (no underscore aliases). Mismatches cause files to appear missing
 on both sides simultaneously — fix at source, never in audit logic.
+
+### Data distribution via GitHub Releases
+
+Large `data/public/` artifacts (bioclim stacks, HCDP zips, NDVI aggregates) are
+published as assets on tagged releases of `jwinchester/mosquitrap-analysis`.
+This is the canonical public mirror for anything too large to commit directly
+and not suitable for Git LFS bandwidth.
+
+**Tag convention:** `data-vN.N` (e.g. `data-v0.1`, `data-v0.2`). Bump the
+minor version when a new batch of data is uploaded; bump the major version
+when a breaking change to upstream sources invalidates prior assets. Code and
+manuscript tags use their own namespaces and never collide.
+
+**Asset naming:** mirror the local `data/public/` filename exactly, so
+`resolve()` calls stay symmetrical with the Drive path.
+
+**Limits:** 2 GB per asset (GitHub hard limit). Split larger products by year
+or tile and document the split in the producing script's header.
